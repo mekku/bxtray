@@ -60,17 +60,15 @@ func main() {
 
 func onReady() {
 
-	thb := 280.0
+	thb := 0.0
    	omg := 0.0
-   	btc := 2.53453
+   	btc := 0.0
    	currentValue := 0.0
 
 	mQuit := systray.AddMenuItem("Quit", "Quit")
 	go func() {
 		<-mQuit.ClickedCh
-		fmt.Println("Requesting quit")
 		systray.Quit()
-		fmt.Println("Finished quitting")
 	}()
 
    	
@@ -84,24 +82,6 @@ func onReady() {
 
 	for {
 		
-		nonce = strconv.FormatInt(time.Now().UnixNano() , 10)
-		hash := sha256.New()
-		hash.Write([]byte(apikey + nonce +  apisecret))
-		md := hash.Sum(nil)
-		sum := hex.EncodeToString(md)
-
-		uresp, uerr := resty.R().SetFormData(map[string]string{"key":apikey, "nonce":nonce, "signature":sum}).Post("https://bx.in.th/api/balance/")
-
-		// Get balance
-		if uerr != nil {
-			fmt.Printf("\nError: %v", uerr)
-		} else {
-			jerr := json.Unmarshal([]byte(uresp.Body()), &balanceResp)
-			if jerr != nil {
-			    panic(jerr)
-			}
-		}
-
 		resp, err := resty.R().SetHeader("Content-Type", "application/json").Get("https://bx.in.th/api/")
 		// Get price
 		if err != nil {
@@ -111,25 +91,45 @@ func onReady() {
 			m := map[string]Pairing{}
 			jerr := json.Unmarshal([]byte(resp.Body()), &m)
 			if jerr != nil {
-			    panic(jerr)
+			    panic(err)
 			}
 
-			if lastPriceOMG != m["26"].LastPrice {
-				lastPriceOMG = m["26"].LastPrice
+			lastPriceOMG = m["26"].LastPrice
+			lastPriceBTC = m["1"].LastPrice
+
+		}
+
+		if apikey != "" && apisecret != "" {
+			nonce = strconv.FormatInt(time.Now().UnixNano() , 10)
+			hash := sha256.New()
+			hash.Write([]byte(apikey + nonce +  apisecret))
+			md := hash.Sum(nil)
+			sum := hex.EncodeToString(md)
+
+			uresp, err := resty.R().SetFormData(map[string]string{"key":apikey, "nonce":nonce, "signature":sum}).Post("https://bx.in.th/api/balance/")
+
+			// Get balance
+			if err != nil {
+				fmt.Printf("\nError: %v", err)
+			} else {
+				jerr := json.Unmarshal([]byte(uresp.Body()), &balanceResp)
+				if jerr != nil {
+				    panic(jerr)
+				}
+
+				btc, _ = balanceResp.Balance["BTC"].Available.Float64()
+				omg, _ = balanceResp.Balance["OMG"].Available.Float64()
+				thb, _ = balanceResp.Balance["THB"].Available.Float64()
 			}
 
-			if lastPriceBTC != m["1"].LastPrice {
-				lastPriceBTC = m["1"].LastPrice
-			}
-
-			// btc, _ = balanceResp.Balance["BTC"].Available.Float64()
-			// omg, _ = balanceResp.Balance["OMG"].Available.Float64()
-			thb, _ = balanceResp.Balance["THB"].Available.Float64()
 			currentValue = ((omg * lastPriceOMG ) + (btc * lastPriceBTC)) +thb
 			systray.SetTitle(fmt.Sprintf("OMG: %v/%v   |   BTC: %v/%v   |   VALUES(THB): %.2f", omg, lastPriceOMG, btc, lastPriceBTC, currentValue))
 
-			time.Sleep(10 * time.Second)
+			time.Sleep(30 * time.Second)
+		} else {
+			systray.SetTitle(fmt.Sprintf("OMG: %v   |   BTC: %v", lastPriceOMG, lastPriceBTC))
 		}
+
 	}
 
 }
